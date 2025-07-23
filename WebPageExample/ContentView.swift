@@ -4,41 +4,52 @@
 
 import SwiftUI
 import WebKit
+import UniformTypeIdentifiers
 
 enum ContentType: String, CaseIterable {
-    case snapshot = "Snapshot"
+    case image = "Image"
     case pdf = "PDF"
-    case webarchive = "Web Archive"
+    case webArchive = "Web Archive"
 }
 
 struct ContentView: View {
     @State private var url: URL = URL(string: "https://www.artemnovichkov.com")!
     @State private var webPage = WebPage()
     @State private var sheet: Sheet?
-    @State private var contentType: ContentType = .snapshot
+    @State private var loaded = false
+    @State private var contentType: ContentType = .image
 
     var body: some View {
         content
-            .safeAreaInset(edge: .bottom) {
-                HStack {
+            .toolbar {
+                ToolbarSpacer(placement: .bottomBar)
+                ToolbarItem(placement: .bottomBar) {
                     Picker("Content Type", selection: $contentType) {
                         ForEach(ContentType.allCases, id: \.self) { contentType in
                             Text(contentType.rawValue)
                                 .tag(contentType)
                         }
                     }
-                    Spacer()
-                    Button("Save") {
+                    .tint(.primary)
+                    .fixedSize()
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Save", systemImage: "square.and.arrow.down") {
                         save()
                     }
+                    .disabled(!loaded)
                 }
-                .padding()
-                .disabled(disabled)
             }
             .sheet(item: $sheet) { $0 }
             .onAppear {
                 let request = URLRequest(url: url)
-                webPage.load(request)
+                Task {
+                    for try await event in webPage.load(request) {
+                        if event == .committed {
+                            loaded = true
+                        }
+                    }
+                }
             }
             .onDisappear {
                 webPage.stopLoading()
@@ -57,36 +68,22 @@ struct ContentView: View {
         }
     }
 
-    private var disabled: Bool {
-        switch webPage.currentNavigationEvent?.kind {
-        case .finished:
-            false
-        default:
-            true
-        }
-    }
-
     private func save() {
         Task {
             do {
+                let data = try await webPage.exported(as: contentType.type)
+                let fileManager = FileManager.default
+                let url = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("data")
+                    .appendingPathExtension(contentType.pathExtension)
+                fileManager.createFile(atPath: url.path(), contents: data)
                 switch contentType {
-                case .snapshot:
-                    if let image = try await webPage.snapshot() {
-                        let renderer = ImageRenderer(content: image)
-                        renderer.scale = 2
-                        if let uiImage = renderer.uiImage, let data = uiImage.pngData() {
-                            let url = save(data, for: contentType)
-                            sheet = .snapshot(url)
-                        }
-                    }
+                case .image:
+                    sheet = .image(url)
                 case .pdf:
-                    let data = try await webPage.pdf()
-                    let url = save(data, for: contentType)
                     sheet = .pdf(url)
-                case .webarchive:
-                    let data = try await webPage.webArchiveData()
-                    let url = save(data, for: contentType)
-                    sheet = .webarchive(url)
+                case .webArchive:
+                    sheet = .webArchive(url)
                 }
             }
             catch {
@@ -94,22 +91,27 @@ struct ContentView: View {
             }
         }
     }
+}
 
-    private func save(_ data: Data, for contentType: ContentType) -> URL {
-        let fileManager = FileManager.default
-        let pathExtension = switch contentType {
-        case .snapshot:
-            "png"
-        case .pdf:
-            "pdf"
-        case .webarchive:
-            "webarchive"
+private extension ContentType {
+
+    var type: UTType {
+        switch self {
+        case .image: .image
+        case .pdf: .pdf
+        case .webArchive: .webArchive
         }
-        let url = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("data")
-            .appendingPathExtension(pathExtension)
-        fileManager.createFile(atPath: url.path(), contents: data)
-        return url
+    }
+
+    var pathExtension: String {
+        if let preferredFilenameExtension = type.preferredFilenameExtension {
+            return preferredFilenameExtension
+        }
+        return switch self {
+        case .image: "png"
+        case .pdf: "pdf"
+        case .webArchive: "webarchive"
+        }
     }
 }
 

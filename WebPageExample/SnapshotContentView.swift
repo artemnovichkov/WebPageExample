@@ -4,7 +4,7 @@
 
 import SwiftUI
  
-struct SnapshotContentView: View {
+struct ImageContentView: View {
     
     let url: URL
     

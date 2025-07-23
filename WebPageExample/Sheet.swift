@@ -6,29 +6,29 @@ import SwiftUI
 
 enum Sheet: View, Identifiable {
     
-    case webarchive(URL)
+    case image(URL)
     case pdf(URL)
-    case snapshot(URL)
+    case webArchive(URL)
 
     var id: String {
         switch self {
-        case .webarchive:
-            "webarchive"
+        case .image:
+            "image"
         case .pdf:
             "pdf"
-        case .snapshot:
-            "snapshot"
+        case .webArchive:
+            "webArchive"
         }
     }
     
     var body: some View {
         switch self {
-        case .webarchive(let url):
-            WebArchiveView(url: url)
+        case .image(let url):
+            ImageContentView(url: url)
         case .pdf(let url):
             PDFContentView(url: url)
-        case .snapshot(let url):
-            SnapshotContentView(url: url)
+        case .webArchive(let url):
+            WebArchiveView(url: url)
         }
     }
 }
